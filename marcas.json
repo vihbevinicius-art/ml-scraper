@@ -1,0 +1,111 @@
+{
+  "verde": [
+    {
+      "categoria": "Câmeras e corpos",
+      "marcas": [
+        "Sony", "Canon", "Nikon", "Fujifilm", "Panasonic", "Lumix",
+        "Blackmagic", "Leica", "Pentax", "Olympus",
+        "DJI Osmo", "DJI Pocket", "DJI Action",
+        "Insta360", "GoPro"
+      ]
+    },
+    {
+      "categoria": "Lentes",
+      "marcas": [
+        "Sony", "Canon", "Nikon", "Sigma", "Tamron", "Tokina",
+        "Samyang", "Rokinon", "Viltrox", "Laowa", "Fujinon", "Zeiss"
+      ]
+    },
+    {
+      "categoria": "Microfones e áudio",
+      "marcas": [
+        "Rode", "Shure", "Sennheiser", "DJI Mic", "Hollyland", "Boya",
+        "Saramonic", "Audio-Technica", "Comica", "Deity", "Zoom",
+        "Tascam", "AKG"
+      ]
+    },
+    {
+      "categoria": "Iluminação",
+      "marcas": [
+        "Godox", "Aputure", "Neewer", "Nanlite", "Amaran", "Yongnuo",
+        "Greika", "Profoto", "Elgato Key Light"
+      ]
+    },
+    {
+      "categoria": "Estabilizadores / gimbals",
+      "marcas": ["DJI", "Zhiyun", "Hohem", "FeiyuTech", "Moza"]
+    },
+    {
+      "categoria": "Tripés e suportes",
+      "marcas": [
+        "Manfrotto", "Benro", "SmallRig", "Peak Design",
+        "Joby", "Gorillapod", "Ulanzi", "Sirui", "Velbon"
+      ]
+    },
+    {
+      "categoria": "Captura / monitores / acessórios pro",
+      "marcas": [
+        "Atomos", "Blackmagic", "SmallRig", "Tilta", "Elgato", "DJI"
+      ]
+    },
+    {
+      "categoria": "Cartões de memória / armazenamento",
+      "marcas": [
+        "SanDisk Extreme Pro", "SanDisk Extreme", "SanDisk",
+        "Kingston Canvas", "Kingston",
+        "Lexar", "Transcend",
+        "Sony Tough", "Samsung Pro", "Samsung Evo"
+      ]
+    },
+    {
+      "categoria": "Drones",
+      "marcas": [
+        "DJI Mavic", "DJI Air", "DJI Mini", "DJI Flip", "DJI Avata", "DJI Neo",
+        "Autel Robotics", "Autel Evo Lite", "Autel Evo II", "Autel Nano+",
+        "Skydio", "Parrot Anafi"
+      ]
+    },
+    {
+      "categoria": "Acessórios de smartphone para filmmaking",
+      "marcas": [
+        "Ulanzi", "Freewell", "Moment", "SmallRig",
+        "DJI Osmo Mobile", "Zhiyun Smooth", "Hohem iSteady",
+        "PolarPro", "Sandmarc", "Beastgrip", "Sirui", "Shiftcam"
+      ]
+    },
+    {
+      "categoria": "Filtros (ND/CPL/VND)",
+      "marcas": [
+        "Freewell", "PolarPro", "NiSi", "K&F Concept",
+        "Sandmarc", "Hoya", "Tiffen"
+      ]
+    }
+  ],
+  "amarelo": [
+    {
+      "categoria": "Marcas intermediárias / custo-benefício",
+      "marcas": [
+        "Ulanzi (linha básica)", "Greika", "Neewer (acessórios)",
+        "K&F Concept", "Mamen", "Andoer", "Puluz", "Tomate",
+        "Boya (entrada)", "Yongnuo (básico)", "Apexel"
+      ]
+    },
+    {
+      "categoria": "Acessórios genéricos com marca",
+      "descricao": "tripés de marca, flashes de marca, cartões SD de marca conhecida, baterias/grips, bolsas, deadcats/espumas, suportes veiculares de marca",
+      "marcas": []
+    }
+  ],
+  "vermelho": {
+    "descricoes": [
+      "Produtos sem marca identificável no título",
+      "Câmeras/lentes/drones de marcas desconhecidas ou \"fantasma\"",
+      "Produtos com menos de 10 avaliações",
+      "Itens genéricos (\"tripé universal\", \"microfone profissional\" sem marca, \"kit iluminação\" sem fabricante)"
+    ],
+    "palavras_bloqueio": [
+      "genérico", "generico", "universal",
+      "sem marca", "compatível com", "compativel com"
+    ]
+  }
+}

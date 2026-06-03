@@ -1,0 +1,19 @@
+# Ambiente virtual e cache do Python
+.venv/
+__pycache__/
+*.pyc
+
+# macOS
+.DS_Store
+
+# Arquivos locais (não devem ir pro servidor)
+.senha
+cloudflared
+*.tgz
+/tmp/
+
+# Profile do Chrome (Playwright local) — não usado em produção
+.ml-mensagens-chrome-profile/
+
+# Histórico é gerado em runtime — não precisa versionar
+historico.json
