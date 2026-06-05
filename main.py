@@ -516,6 +516,40 @@ def index():
                    line-height: 1.4; }
     .manual-hint b { color: #8a6300; }
 
+    /* ─── Painel "Rotina do dia" ─── */
+    .rotina { border: 1px solid #d6e6fb; border-radius: 10px; margin-bottom: 22px;
+              background: #f5f9ff; overflow: hidden; }
+    .rotina-head { display: flex; justify-content: space-between; align-items: center;
+                   padding: 13px 16px; cursor: pointer; user-select: none; }
+    .rotina-head:hover { background: #ebf2fc; }
+    .rotina-titulo { font-weight: 700; color: #1c5fc4; font-size: 15px; }
+    .rotina-seta { color: #3483fa; font-size: 12px; transition: transform .2s; }
+    .rotina.fechada .rotina-seta { transform: rotate(-90deg); }
+    .rotina.fechada .rotina-corpo { display: none; }
+    .rotina-corpo { padding: 0 16px 16px; }
+    .rotina-dica { background: #fff; border-radius: 8px; padding: 11px 13px;
+                   font-size: 13.5px; color: #333; line-height: 1.5; margin-bottom: 14px;
+                   border-left: 4px solid #3483fa; }
+    .rotina-dica b { color: #1c5fc4; }
+    .rotina-aviso { background: #fff8e8; border-left: 4px solid #f0ad4e; border-radius: 8px;
+                    padding: 11px 13px; font-size: 13px; color: #6b4a00; line-height: 1.5;
+                    margin-top: 14px; }
+    .rotina-aviso b { color: #8a6300; }
+    .rotina-cat { display: flex; align-items: flex-start; gap: 10px; padding: 9px 11px;
+                  border-radius: 8px; margin-bottom: 7px; background: #fff;
+                  border: 1px solid #e3edfb; transition: opacity .15s; }
+    .rotina-cat input { margin: 2px 0 0; width: 18px; height: 18px; flex-shrink: 0;
+                        cursor: pointer; accent-color: #00a650; }
+    .rotina-cat label { cursor: pointer; flex: 1; }
+    .rotina-cat .cat-nome { font-weight: 700; color: #222; font-size: 14px;
+                            display: block; margin-bottom: 2px; }
+    .rotina-cat .cat-termos { font-size: 12.5px; color: #777; line-height: 1.4; }
+    .rotina-cat.feito { opacity: .5; }
+    .rotina-cat.feito .cat-nome { text-decoration: line-through; }
+    .rotina-progresso { font-size: 13px; font-weight: 700; color: #00a650;
+                        margin-bottom: 12px; text-align: center; }
+    .rotina-progresso.completo { color: #1c5fc4; }
+
     /* ─── Badge de marca no topo do card ─── */
     .marca-badge { display: block; font-weight: 700; padding: 10px 14px;
                    border-radius: 8px; margin-bottom: 12px; font-size: 14px;
@@ -649,6 +683,28 @@ def index():
     </div>
 
     <div id="vista-gerar" class="vista ativa">
+
+      <div class="rotina" id="rotina">
+        <div class="rotina-head" onclick="toggleRotina()">
+          <span class="rotina-titulo">📅 Rotina do dia — o que pesquisar hoje</span>
+          <span class="rotina-seta" id="rotina-seta">▼</span>
+        </div>
+        <div class="rotina-corpo" id="rotina-corpo">
+          <div class="rotina-dica">
+            💡 <b>Pesquise TODAS as categorias todo dia!</b> Não fique só no que já conhece —
+            cada tipo de produto entra em promoção em dias diferentes. Vá marcando abaixo
+            conforme for pesquisando cada uma no Mercado Livre. A lista zera todo dia. 😉
+          </div>
+          <div id="rotina-checklist"><div class="hist-vazio">Carregando…</div></div>
+          <div class="rotina-aviso">
+            ⚠️ <b>Antes de postar qualquer coisa:</b> olhe o selo colorido que aparece em cada
+            produto. Só mande os <b>🟢 verdes</b> (marca boa) ou <b>🟡 amarelos com desconto
+            forte</b>. Os <b>🔴 vermelhos</b> ou sem marca conhecida, <b>não poste</b>.
+            Na dúvida, abra a aba <b>📋 Guia de Produtos</b>.
+          </div>
+        </div>
+      </div>
+
       <p class="sub">Cole vários links do Mercado Livre, um por linha.</p>
       <label for="cupom-dia">🎟️ Cupom do dia (opcional)</label>
       <div class="cupom-row">
@@ -1210,6 +1266,113 @@ def index():
         alert('Erro ao limpar histórico');
       }
     }
+
+    // ─── Rotina do dia ───────────────────────────────────────────────
+    function _hojeStr() {
+      const d = new Date();
+      return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+    }
+    function _chaveRotina() { return 'rotina-feito-' + _hojeStr(); }
+
+    function _lerFeitos() {
+      try { return JSON.parse(localStorage.getItem(_chaveRotina()) || '[]'); }
+      catch (_) { return []; }
+    }
+    function _salvarFeitos(arr) {
+      // Limpa marcações de dias anteriores pra não acumular lixo
+      try {
+        for (let i = localStorage.length - 1; i >= 0; i--) {
+          const k = localStorage.key(i);
+          if (k && k.startsWith('rotina-feito-') && k !== _chaveRotina()) {
+            localStorage.removeItem(k);
+          }
+        }
+        localStorage.setItem(_chaveRotina(), JSON.stringify(arr));
+      } catch (_) {}
+    }
+
+    function toggleRotina() {
+      const r = document.getElementById('rotina');
+      r.classList.toggle('fechada');
+      try { localStorage.setItem('rotina-aberta', r.classList.contains('fechada') ? '0' : '1'); } catch (_) {}
+    }
+
+    function marcarRotina(nome) {
+      let feitos = _lerFeitos();
+      if (feitos.includes(nome)) feitos = feitos.filter(n => n !== nome);
+      else feitos.push(nome);
+      _salvarFeitos(feitos);
+      renderRotinaEstado();
+    }
+
+    function renderRotinaEstado() {
+      const feitos = _lerFeitos();
+      const cards = document.querySelectorAll('#rotina-checklist .rotina-cat');
+      let total = 0, ok = 0;
+      cards.forEach(c => {
+        total++;
+        const nome = c.dataset.nome;
+        const chk = c.querySelector('input');
+        const marcado = feitos.includes(nome);
+        chk.checked = marcado;
+        c.classList.toggle('feito', marcado);
+        if (marcado) ok++;
+      });
+      const prog = document.getElementById('rotina-progresso');
+      if (prog) {
+        if (ok >= total && total > 0) {
+          prog.textContent = '🎉 Tudo pesquisado hoje! Mandou bem!';
+          prog.classList.add('completo');
+        } else {
+          prog.textContent = `✅ ${ok} de ${total} categorias pesquisadas hoje`;
+          prog.classList.remove('completo');
+        }
+      }
+    }
+
+    let _rotinaCarregada = false;
+    async function carregarRotina() {
+      if (_rotinaCarregada) { renderRotinaEstado(); return; }
+      const cont = document.getElementById('rotina-checklist');
+      try {
+        const r = await fetch('/marcas');
+        const g = await r.json();
+        const verde = g.verde || [];
+        const html = `<div class="rotina-progresso" id="rotina-progresso"></div>` +
+          verde.map(cat => {
+            const safe = escapeHtml(cat.categoria);
+            // Sugere as primeiras marcas como termos de busca
+            const termos = escapeHtml((cat.marcas || []).slice(0, 6).join(', '));
+            return `
+              <div class="rotina-cat" data-nome="${safe}">
+                <input type="checkbox" style="pointer-events:none" tabindex="-1" />
+                <label>
+                  <span class="cat-nome">${safe}</span>
+                  <span class="cat-termos">🔎 Busque por: ${termos}</span>
+                </label>
+              </div>`;
+          }).join('');
+        cont.innerHTML = html;
+        // Listeners: clicar em qualquer parte do card alterna a marcação
+        cont.querySelectorAll('.rotina-cat').forEach(c => {
+          c.addEventListener('click', () => marcarRotina(c.dataset.nome));
+        });
+        _rotinaCarregada = true;
+        renderRotinaEstado();
+      } catch (e) {
+        cont.innerHTML = '<div class="hist-vazio">Erro ao carregar a rotina.</div>';
+      }
+    }
+
+    // Inicialização: restaura estado aberto/fechado e carrega o checklist
+    (function initRotina() {
+      try {
+        if (localStorage.getItem('rotina-aberta') === '0') {
+          document.getElementById('rotina').classList.add('fechada');
+        }
+      } catch (_) {}
+      carregarRotina();
+    })();
   </script>
 </body>
 </html>
