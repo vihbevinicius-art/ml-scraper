@@ -78,6 +78,12 @@ app = FastAPI(title="ML Scraper", dependencies=[Depends(_verificar_acesso)])
 
 CABECALHO_ALIEXPRESS = "🛒 ACHADO NO ALIEXPRESS — VEM VER! 🛒"
 
+# Tag do marketplace — vai na 1ª linha da mensagem pra identificar a origem
+TAG_MARKETPLACE = {
+    "ml": "[MERCADOLIVRE]",
+    "aliexpress": "[ALIEXPRESS] - ESTOQUE NO BRASIL - SEM IMPOSTO",
+}
+
 # Palavras de marketing/SEO que costumam aparecer no final dos títulos
 # e não acrescentam informação útil ao consumidor.
 _TITULO_LIXO = {
@@ -404,10 +410,15 @@ def escolher_cabecalho(plataforma: Optional[str], passado: Optional[str]) -> str
 
 
 def montar_mensagem_whatsapp(dados: dict, cabecalho: str) -> str:
-    # URL no topo com label "link:" — deixa claro que é pra clicar.
-    # WhatsApp ainda gera preview porque detecta a URL na primeira linha.
+    # 1ª linha: tag do marketplace (identifica a origem de cara).
+    # 2ª linha: URL com label "link:" — o WhatsApp ainda gera o preview porque
+    # detecta a URL logo no começo da mensagem.
     url = dados.get("url_original", "")
-    linhas = [f"link: {url}" if url else "link:", "", cabecalho, ""]
+    tag = TAG_MARKETPLACE.get(dados.get("plataforma"))
+    linhas = []
+    if tag:
+        linhas.append(tag)
+    linhas += [f"link: {url}" if url else "link:", "", cabecalho, ""]
 
     titulo = dados.get("titulo") or "(sem título)"
     # Prefixa com [CATEGORIA] quando tiver — bate o olho e já filtra interesse
@@ -888,12 +899,20 @@ def index():
       return v.toLocaleString('pt-BR', {minimumFractionDigits: 2, maximumFractionDigits: 2});
     }
 
-    function gerarMensagem(cabecalho, categoria, titulo, precoOrig, precoAtual, freteGratis, cupom, urlOriginal) {
-      // URL no topo com label "link:" — clarifica a chamada de ação.
-      // Preview do WhatsApp ainda funciona porque a URL fica na 1ª linha.
+    const TAGS_MARKETPLACE = {
+      ml: '[MERCADOLIVRE]',
+      aliexpress: '[ALIEXPRESS] - ESTOQUE NO BRASIL - SEM IMPOSTO',
+    };
+
+    function gerarMensagem(plataforma, cabecalho, categoria, titulo, precoOrig, precoAtual, freteGratis, cupom, urlOriginal) {
+      // 1ª linha: tag do marketplace. 2ª linha: URL com label "link:".
+      // O WhatsApp ainda gera preview porque a URL fica logo no começo.
       const url = urlOriginal || '';
       const linhaUrl = url ? `link: ${url}` : 'link:';
-      const linhas = [linhaUrl, '', cabecalho, ''];
+      const linhas = [];
+      const tag = TAGS_MARKETPLACE[plataforma];
+      if (tag) linhas.push(tag);
+      linhas.push(linhaUrl, '', cabecalho, '');
       // Prefixa título com [CATEGORIA] quando tiver
       const tituloLimpo = (titulo || '(sem título)').trim();
       const cat = (categoria || '').trim().toUpperCase();
@@ -915,7 +934,7 @@ def index():
       const pOrig  = parsePreco(document.getElementById('f-orig-' + i).value);
       const cupom  = document.getElementById('f-cupom-' + i).value.trim();
       const frete  = document.getElementById('f-frete-' + i).checked;
-      const msg = gerarMensagem(r.cabecalho, cat, titulo, pOrig, pAtual, frete, cupom, r.url_original);
+      const msg = gerarMensagem(r.plataforma, r.cabecalho, cat, titulo, pOrig, pAtual, frete, cupom, r.url_original);
       document.getElementById('msg-' + i).value = msg;
       r.categoria = cat || null;
       r.titulo = titulo;
