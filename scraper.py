@@ -200,6 +200,54 @@ def _resolver_challenge_akamai(session: requests.Session, final_url: str) -> boo
     return True
 
 
+def _titulo_do_slug(url: str) -> Optional[str]:
+    """Extrai um título a partir do slug da URL do produto. Ex:
+    '.../microfone-hollyland-lark-a1-mini/p/MLB123' → 'Microfone Hollyland Lark A1 Mini'.
+    Funciona sem carregar a página — só a URL basta."""
+    m = re.search(r"mercadoli(?:vre|bre)\.com(?:\.br)?/([a-z0-9\-]+)/p/", url, re.I)
+    if not m:
+        m = re.search(r"/([a-z0-9\-]{8,})/p/MLB", url, re.I)
+    if not m:
+        return None
+    slug = m.group(1)
+    if slug.count("-") < 2:  # slug curto demais, provavelmente não é título
+        return None
+    titulo = slug.replace("-", " ").strip()
+    # Capitaliza cada palavra (title case simples, preserva siglas curtas)
+    palavras = [p.capitalize() if len(p) > 2 and not p.isdigit() else p
+                for p in titulo.split()]
+    return " ".join(palavras)
+
+
+def _titulo_via_jina(url: str, timeout: int = 30) -> Optional[str]:
+    """Usa o Jina Reader (r.jina.ai) pra ler a página do produto de um IP
+    não bloqueado. Retorna o og:title (linha 'Title:' do markdown). Serve
+    de fallback quando o ML bloqueia o scraping direto (ex: IP de data center).
+    Retorna None se falhar ou vier título genérico ('Mercado Livre')."""
+    try:
+        r = requests.get(
+            "https://r.jina.ai/" + url,
+            headers={"x-timeout": str(timeout - 5), "Accept": "text/plain"},
+            timeout=timeout,
+        )
+        if r.status_code != 200:
+            return None
+        m = re.search(r"^Title:\s*(.+)$", r.text, re.MULTILINE)
+        if not m:
+            return None
+        titulo = m.group(1).strip()
+        # Remove sufixos comuns
+        titulo = re.sub(r"\s*[-|]\s*Mercado\s*Li[bv]re.*$", "", titulo, flags=re.I).strip()
+        titulo = re.sub(r"\s*[-–]\s*R\$.*$", "", titulo).strip()
+        # Rejeita títulos genéricos (página não era a do produto)
+        generico = titulo.lower() in {
+            "mercado livre", "mercado libre", "mercado livre brasil", "",
+        }
+        return None if generico else titulo
+    except Exception:
+        return None
+
+
 def _buscar_pagina(url: str) -> requests.Response:
     import time
 
@@ -313,6 +361,15 @@ def extrair_produto(url: str) -> dict:
         if any(m in combinado for m in marcadores):
             resultado["bloqueado"] = True
             resultado["titulo"] = None
+            # Tenta recuperar o TÍTULO por fora do scraping bloqueado:
+            # 1) Jina Reader (lê de um IP não bloqueado) — passa a URL original
+            #    (afiliado/meli.la) pra ele renderizar a vitrine e pegar o og:title.
+            titulo_ext = _titulo_via_jina(url)
+            # 2) Fallback: slug da URL final resolvida (se for /p/MLB)
+            if not titulo_ext:
+                titulo_ext = _titulo_do_slug(resp.url)
+            if titulo_ext:
+                resultado["titulo"] = titulo_ext
             return resultado
 
     caracteristicas = []

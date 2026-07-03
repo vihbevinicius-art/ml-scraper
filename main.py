@@ -1009,10 +1009,14 @@ def index():
         let avisoManual = '';
         if (r.preencher_manual) {
           const nomeLoja = r.plataforma === 'ml' ? 'Mercado Livre' : 'AliExpress';
-          const extra = r.plataforma === 'ml'
-            ? ' Abra o link, copie o <b>título</b> e o <b>preço</b> e cole aqui.'
-            : '';
-          avisoManual = `<div class="manual-hint">✏️ <b>${nomeLoja}:</b> preencha os campos abaixo (título, preço, cupom).${extra} A mensagem se monta sozinha.</div>`;
+          let corpo;
+          if (r.titulo) {
+            // Título veio automático — só falta o preço
+            corpo = `título puxado automático ✅. Agora só <b>preencha o preço</b> (abra o link, veja o valor e digite). A mensagem se monta sozinha.`;
+          } else {
+            corpo = `preencha os campos abaixo (título, preço, cupom). Abra o link, copie os dados e cole aqui. A mensagem se monta sozinha.`;
+          }
+          avisoManual = `<div class="manual-hint">✏️ <b>${nomeLoja}:</b> ${corpo}</div>`;
         }
         // Badge de marca (verde / amarelo / vermelho) — topo do card
         const badgeMarca = `<div id="badge-marca-${i}"></div>`;
