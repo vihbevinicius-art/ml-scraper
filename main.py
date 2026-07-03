@@ -791,14 +791,15 @@ def index():
       btn.disabled = true;
       btn.textContent = 'Gerando…';
 
-      // Carrega cabeçalhos e pré-checa histórico em paralelo
+      // Carrega cabeçalhos, marcas e pré-checa histórico em paralelo
       const [cabecalhos, recentesResp] = await Promise.all([
         buscarCabecalhos(),
         fetch('/historico/verificar', {
           method: 'POST',
           headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({urls})
-        }).then(r => r.ok ? r.json() : {}).catch(() => ({}))
+        }).then(r => r.ok ? r.json() : {}).catch(() => ({})),
+        carregarMarcasDeteccao()
       ]);
       const sequencia = montarSequencia(cabecalhos, urls.length);
       let recentes = recentesResp || {};
@@ -904,6 +905,54 @@ def index():
       aliexpress: '[ALIEXPRESS] - ESTOQUE NO BRASIL - SEM IMPOSTO',
     };
 
+    // ─── Classificação de marca no frontend (espelha classificar_marca do backend) ───
+    // Recalcula o badge quando o usuário edita o título no modo manual.
+    let _marcasDeteccao = null;
+    async function carregarMarcasDeteccao() {
+      if (_marcasDeteccao) return _marcasDeteccao;
+      try {
+        const g = await (await fetch('/marcas')).json();
+        const limpaNome = s => s.replace(/\\s*\\(.*?\\)\\s*/g, '').trim();
+        const verde = new Set();
+        (g.verde || []).forEach(c => (c.marcas || []).forEach(m => verde.add(limpaNome(m))));
+        const amarelo = new Set();
+        (g.amarelo || []).forEach(c => (c.marcas || []).forEach(m => {
+          const n = limpaNome(m);
+          if (n && !verde.has(n)) amarelo.add(n);
+        }));
+        _marcasDeteccao = {
+          verde: [...verde].sort((a, b) => b.length - a.length),
+          amarelo: [...amarelo].sort((a, b) => b.length - a.length),
+          vermelho: (g.vermelho && g.vermelho.palavras_bloqueio) || [],
+        };
+      } catch (_) { _marcasDeteccao = { verde: [], amarelo: [], vermelho: [] }; }
+      return _marcasDeteccao;
+    }
+
+    function classificarMarcaJS(titulo) {
+      const d = _marcasDeteccao;
+      if (!d) return null;
+      if (!titulo || !titulo.trim())
+        return { cor: 'amarelo', label: '⚠️ Confirme antes de postar', motivo: 'preencha o título' };
+      const t = titulo.toLowerCase();
+      for (const p of d.vermelho)
+        if (t.includes(p.toLowerCase())) return { cor: 'vermelho', label: '❌ Não postar', motivo: `contém "${p}"` };
+      for (const m of d.verde)
+        if (t.includes(m.toLowerCase())) return { cor: 'verde', label: '✅ Marca aprovada — pode postar', marca: m };
+      for (const m of d.amarelo)
+        if (t.includes(m.toLowerCase())) return { cor: 'amarelo', label: '⚠️ Confirme antes de postar (só com desconto bom)', marca: m };
+      return { cor: 'amarelo', label: '⚠️ Marca não reconhecida — confirme antes de postar', motivo: 'nenhuma marca da lista bateu' };
+    }
+
+    function renderBadgeMarca(i, bm) {
+      const el = document.getElementById('badge-marca-' + i);
+      if (!el || !bm || !bm.cor) { if (el) el.innerHTML = ''; return; }
+      const detalhe = bm.marca
+        ? `<span class="detalhe">(marca: ${escapeHtml(bm.marca)})</span>`
+        : (bm.motivo ? `<span class="detalhe">(${escapeHtml(bm.motivo)})</span>` : '');
+      el.innerHTML = `<div class="marca-badge ${bm.cor}">${escapeHtml(bm.label || '')} ${detalhe}</div>`;
+    }
+
     function gerarMensagem(plataforma, cabecalho, categoria, titulo, precoOrig, precoAtual, freteGratis, cupom, urlOriginal) {
       // 1ª linha: tag do marketplace. 2ª linha: URL com label "link:".
       // O WhatsApp ainda gera preview porque a URL fica logo no começo.
@@ -936,6 +985,8 @@ def index():
       const frete  = document.getElementById('f-frete-' + i).checked;
       const msg = gerarMensagem(r.plataforma, r.cabecalho, cat, titulo, pOrig, pAtual, frete, cupom, r.url_original);
       document.getElementById('msg-' + i).value = msg;
+      // Recalcula o selo de marca conforme o título muda (útil no modo manual)
+      renderBadgeMarca(i, classificarMarcaJS(titulo));
       r.categoria = cat || null;
       r.titulo = titulo;
       r.preco_atual = pAtual;
@@ -955,18 +1006,16 @@ def index():
         const cupomVal  = escapeHtml(r.cupom || '');
         const catVal    = escapeHtml(r.categoria || '');
         const freteChk  = r.frete_gratis ? 'checked' : '';
-        const avisoManual = r.preencher_manual
-          ? '<div class="manual-hint">✏️ <b>AliExpress:</b> preencha o preço e os demais campos abaixo. A mensagem se monta sozinha.</div>'
-          : '';
-        // Badge de marca (verde / amarelo / vermelho) — topo do card
-        const bm = r.badge_marca || {};
-        let badgeMarca = '';
-        if (bm.cor) {
-          const detalhe = bm.marca
-            ? `<span class="detalhe">(marca: ${escapeHtml(bm.marca)})</span>`
-            : (bm.motivo ? `<span class="detalhe">(${escapeHtml(bm.motivo)})</span>` : '');
-          badgeMarca = `<div class="marca-badge ${bm.cor}">${escapeHtml(bm.label || '')} ${detalhe}</div>`;
+        let avisoManual = '';
+        if (r.preencher_manual) {
+          const nomeLoja = r.plataforma === 'ml' ? 'Mercado Livre' : 'AliExpress';
+          const extra = r.plataforma === 'ml'
+            ? ' Abra o link, copie o <b>título</b> e o <b>preço</b> e cole aqui.'
+            : '';
+          avisoManual = `<div class="manual-hint">✏️ <b>${nomeLoja}:</b> preencha os campos abaixo (título, preço, cupom).${extra} A mensagem se monta sozinha.</div>`;
         }
+        // Badge de marca (verde / amarelo / vermelho) — topo do card
+        const badgeMarca = `<div id="badge-marca-${i}"></div>`;
         el.innerHTML = `
           <div class="badge">${r.preencher_manual ? '✏️' : '✅'}</div>
           ${badgePlataforma(r.plataforma)}
@@ -1005,6 +1054,8 @@ def index():
           ${avisoRepost(r.repost)}
           <textarea class="msg" id="msg-${i}" readonly>${escapeHtml(r.mensagem_whatsapp)}</textarea>
           <button id="btn-copiar-${i}" class="copiar" onclick="copiarItem(${i})">📋 Copiar</button>`;
+        // Badge de marca: usa o do backend, ou recalcula do título atual
+        renderBadgeMarca(i, r.badge_marca || classificarMarcaJS(r.titulo));
       } else if (r.chrome_aberto) {
         el.dataset.status = 'erro';
         el.innerHTML = `
@@ -1407,6 +1458,11 @@ def extrair(pedido: PedidoURL):
     if plataforma == "ml":
         dados = extrair_produto(pedido.url)
         dados["plataforma"] = "ml"
+        # Se o ML bloqueou a leitura (comum em IP de data center como o Render),
+        # cai pro modo manual — o usuário preenche os campos no card.
+        if dados.get("bloqueado"):
+            dados.pop("erro", None)
+            dados["preencher_manual"] = True
     elif plataforma == "aliexpress":
         # AliExpress: modo manual — só pega o título (best-effort), o resto
         # o usuário preenche no card. Evita o captcha/Playwright que travava.

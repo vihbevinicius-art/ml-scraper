@@ -297,6 +297,24 @@ def extrair_produto(url: str) -> dict:
             if t:
                 resultado["titulo"] = t
 
+    # Detecta página de bloqueio anti-bot do ML. Comum quando o app roda em
+    # IP de data center (ex: Render) — o ML serve uma página de verificação
+    # ("Por segurança...") em vez do produto. Sinaliza pra cair no modo manual.
+    if not soup.select_one("h1.ui-pdp-title"):
+        title_tag = soup.select_one("title")
+        title_low = title_tag.get_text(strip=True).lower() if title_tag else ""
+        titulo_low = (resultado["titulo"] or "").lower()
+        marcadores = (
+            "por segurança", "para sua segurança", "antes de continuar",
+            "verifique que", "não sou um robô", "no soy un robot",
+            "acesso não autorizado", "unusual traffic",
+        )
+        combinado = f"{title_low} {titulo_low}"
+        if any(m in combinado for m in marcadores):
+            resultado["bloqueado"] = True
+            resultado["titulo"] = None
+            return resultado
+
     caracteristicas = []
     for li in soup.select("ul.ui-pdp-features li, ul.ui-vpp-highlighted-specs__features-list li"):
         t = _texto(li)
