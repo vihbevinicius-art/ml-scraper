@@ -14,6 +14,7 @@ from pydantic import BaseModel
 
 import configuracoes
 import historico
+import radar
 from scraper import extrair_produto
 from scraper_aliexpress import extrair_ali_manual
 
@@ -561,6 +562,46 @@ def index():
                         margin-bottom: 12px; text-align: center; }
     .rotina-progresso.completo { color: #1c5fc4; }
 
+    /* ─── Radar de Ofertas ─── */
+    .radar-topbar { display: flex; align-items: center; gap: 16px; margin-bottom: 18px;
+                    flex-wrap: wrap; }
+    .radar-filtro { display: flex; align-items: center; gap: 7px; font-size: 13px;
+                    color: #444; cursor: pointer; user-select: none; }
+    .radar-filtro input { width: 16px; height: 16px; accent-color: #00a650; cursor: pointer; }
+    .oferta { display: flex; align-items: center; gap: 14px; border: 1px solid #e3e3e3;
+              border-radius: 10px; padding: 13px 15px; margin-bottom: 10px;
+              border-left: 5px solid #ccc; transition: box-shadow .15s; }
+    .oferta:hover { box-shadow: 0 2px 10px rgba(0,0,0,.08); }
+    .oferta.verde    { border-left-color: #0a7c33; }
+    .oferta.amarelo  { border-left-color: #f0ad4e; }
+    .oferta.vermelho { border-left-color: #d33; opacity: .7; }
+    .oferta-desc { flex-shrink: 0; width: 62px; text-align: center; }
+    .oferta-desc .pct { font-size: 20px; font-weight: 800; color: #00a650; line-height: 1; }
+    .oferta-desc .off { font-size: 10px; font-weight: 700; color: #00a650; letter-spacing: .5px; }
+    .oferta-desc .sem { font-size: 11px; color: #aaa; }
+    .oferta-info { flex: 1; min-width: 0; }
+    .oferta-info .tit { font-size: 14px; font-weight: 600; color: #222; line-height: 1.35;
+                        display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+                        overflow: hidden; }
+    .oferta-info .meta { font-size: 11.5px; margin-top: 4px; display: flex; gap: 8px;
+                         flex-wrap: wrap; align-items: center; }
+    .oferta-info .meta .selo { padding: 1px 7px; border-radius: 999px; font-weight: 700; }
+    .selo-verde    { background: #e6f7ec; color: #0a7c33; }
+    .selo-amarelo  { background: #fff4d6; color: #8a6300; }
+    .selo-vermelho { background: #fde2e2; color: #a52323; }
+    .selo-cat  { background: #eef2f7; color: #445; }
+    .selo-dia  { background: #ffe8e0; color: #c0490c; }
+    .selo-frete{ background: #e8f5ff; color: #1c5fc4; }
+    .oferta-acoes { flex-shrink: 0; display: flex; flex-direction: column; gap: 6px; }
+    .oferta-acoes button, .oferta-acoes a { font-size: 12px; padding: 7px 12px; border-radius: 6px;
+                        text-align: center; text-decoration: none; white-space: nowrap;
+                        cursor: pointer; border: none; font-weight: 600; font-family: inherit; }
+    .btn-usar { background: #3483fa; color: #fff; }
+    .btn-usar:hover { background: #2968c8; }
+    .btn-abrir { background: #f0f0f0; color: #333; }
+    .btn-abrir:hover { background: #e0e0e0; }
+    .radar-resumo { font-size: 13px; color: #444; margin-bottom: 12px; font-weight: 600; }
+
     /* ─── Badge de marca no topo do card ─── */
     .marca-badge { display: block; font-weight: 700; padding: 10px 14px;
                    border-radius: 8px; margin-bottom: 12px; font-size: 14px;
@@ -688,6 +729,7 @@ def index():
 
     <div class="tabs">
       <button class="tab ativa" id="tab-gerar" onclick="trocarAba('gerar')">Gerar mensagens</button>
+      <button class="tab" id="tab-radar" onclick="trocarAba('radar')">🎯 Radar de Ofertas</button>
       <button class="tab" id="tab-guia"  onclick="trocarAba('guia')">📋 Guia de Produtos</button>
       <button class="tab" id="tab-hist"  onclick="trocarAba('hist')">🕘 Histórico</button>
       <button class="tab" id="tab-cfg"   onclick="trocarAba('cfg')">⚙️ Cabeçalhos</button>
@@ -753,6 +795,20 @@ def index():
       O app já marca automaticamente cada produto capturado com um selo verde/amarelo/vermelho —
       essa tela é só pra você conferir as listas de marcas.</p>
       <div id="guia-conteudo"><div class="hist-vazio">Carregando…</div></div>
+    </div>
+
+    <div id="vista-radar" class="vista">
+      <p class="sub">Produtos de <b>foto, áudio e vídeo em promoção</b> agora no Mercado Livre.
+      As marcas boas (🟢) aparecem primeiro. Clique em <b>“Usar”</b> pra jogar no gerador,
+      ou <b>“Abrir”</b> pra ver o preço direto no ML.</p>
+      <div class="radar-topbar">
+        <button id="btn-radar" onclick="carregarRadar(true)">🔄 Buscar ofertas agora</button>
+        <label class="radar-filtro">
+          <input type="checkbox" id="radar-so-verde" onchange="renderRadar()" />
+          <span>Só marcas aprovadas 🟢</span>
+        </label>
+      </div>
+      <div id="radar-lista"><div class="hist-vazio">Clique em “Buscar ofertas agora” pra começar. 🎯</div></div>
     </div>
   </div>
 
@@ -1201,6 +1257,86 @@ def index():
       if (qual === 'hist') carregarHistorico();
       if (qual === 'cfg')  carregarCfg();
       if (qual === 'guia') carregarGuia();
+      if (qual === 'radar') carregarRadar(false);
+    }
+
+    // ─── Radar de Ofertas ───────────────────────────────────────────
+    let _radarOfertas = null;
+
+    async function carregarRadar(forcar) {
+      if (_radarOfertas && !forcar) { renderRadar(); return; }
+      const btn = document.getElementById('btn-radar');
+      const lista = document.getElementById('radar-lista');
+      btn.disabled = true;
+      btn.textContent = '🔎 Buscando ofertas…';
+      lista.innerHTML = '<div class="hist-vazio"><span class="spinner-mini"></span> Varrendo o Mercado Livre… (uns 20 segundos)</div>';
+      try {
+        const r = await fetch('/radar');
+        const d = await r.json();
+        _radarOfertas = d.ofertas || [];
+        renderRadar();
+      } catch (e) {
+        lista.innerHTML = '<div class="hist-vazio">Não consegui buscar as ofertas agora. Tente de novo em instantes.</div>';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = '🔄 Buscar ofertas agora';
+      }
+    }
+
+    function renderRadar() {
+      const lista = document.getElementById('radar-lista');
+      if (!_radarOfertas) return;
+      const soVerde = document.getElementById('radar-so-verde').checked;
+      let ofertas = _radarOfertas;
+      if (soVerde) ofertas = ofertas.filter(o => o.badge_marca && o.badge_marca.cor === 'verde');
+
+      if (!ofertas.length) {
+        lista.innerHTML = '<div class="hist-vazio">Nenhuma oferta ' + (soVerde ? 'de marca aprovada ' : '') + 'no momento. Tente atualizar mais tarde.</div>';
+        return;
+      }
+
+      const nVerde = _radarOfertas.filter(o => o.badge_marca.cor === 'verde').length;
+      let html = `<div class="radar-resumo">🎯 ${ofertas.length} oferta${ofertas.length>1?'s':''} — ${nVerde} de marca aprovada 🟢</div>`;
+
+      html += ofertas.map((o, idx) => {
+        const cor = o.badge_marca.cor;
+        const seloMarca = cor === 'verde' ? '<span class="selo selo-verde">🟢 marca boa</span>'
+          : cor === 'vermelho' ? '<span class="selo selo-vermelho">🔴 evite</span>'
+          : '<span class="selo selo-amarelo">🟡 confira</span>';
+        const descBox = o.desconto
+          ? `<span class="pct">${o.desconto}%</span><span class="off">OFF</span>`
+          : '<span class="sem">oferta</span>';
+        const cat = o.categoria ? `<span class="selo selo-cat">${escapeHtml(o.categoria)}</span>` : '';
+        const dia = o.oferta_do_dia ? '<span class="selo selo-dia">⭐ OFERTA DO DIA</span>' : '';
+        const frete = o.frete_gratis ? '<span class="selo selo-frete">🚚 frete grátis</span>' : '';
+        return `
+          <div class="oferta ${cor}">
+            <div class="oferta-desc">${descBox}</div>
+            <div class="oferta-info">
+              <div class="tit">${escapeHtml(o.titulo)}</div>
+              <div class="meta">${seloMarca} ${cat} ${dia} ${frete}</div>
+            </div>
+            <div class="oferta-acoes">
+              <button class="btn-usar" onclick="usarOferta(${idx})">📋 Usar</button>
+              <a class="btn-abrir" href="${escapeHtml(o.url)}" target="_blank" rel="noopener">🔗 Abrir</a>
+            </div>
+          </div>`;
+      }).join('');
+      lista.innerHTML = html;
+      // Guarda referência filtrada pra usarOferta pegar o índice certo
+      window._radarVisivel = ofertas;
+    }
+
+    function usarOferta(idx) {
+      const o = (window._radarVisivel || [])[idx];
+      if (!o) return;
+      // Joga o link no campo de links e troca pra aba Gerar
+      const ta = document.getElementById('urls');
+      const atual = ta.value.trim();
+      ta.value = atual ? (atual + '\\n' + o.url) : o.url;
+      trocarAba('gerar');
+      ta.focus();
+      ta.scrollIntoView({behavior: 'smooth', block: 'center'});
     }
 
     let _guiaCarregado = false;
@@ -1532,6 +1668,32 @@ def historico_verificar(pedido: PedidoVerificar):
 def listar_marcas():
     """Retorna o guia de marcas pra renderizar a tela 'Guia de Produtos'."""
     return carregar_guia()["guia"]
+
+
+# Ordem das cores pra ranquear ofertas (verde primeiro)
+_ORDEM_COR = {"verde": 0, "amarelo": 1, "vermelho": 2}
+
+
+@app.get("/radar")
+def radar_ofertas():
+    """Radar de Ofertas: busca produtos em promoção no nicho de foto/áudio,
+    classifica cada um pela marca (guia) e ranqueia: marca aprovada primeiro,
+    depois maior desconto. O preço o operador vê ao abrir o link."""
+    try:
+        ofertas = radar.buscar_ofertas()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Falha ao buscar ofertas: {e}")
+
+    for o in ofertas:
+        o["badge_marca"] = classificar_marca(o.get("titulo"))
+        o["categoria"] = detectar_categoria(o.get("titulo"))
+
+    # Ranqueia: cor da marca (verde→amarelo→vermelho), depois maior desconto
+    ofertas.sort(key=lambda o: (
+        _ORDEM_COR.get(o["badge_marca"]["cor"], 9),
+        -(o.get("desconto") or 0),
+    ))
+    return {"ofertas": ofertas, "total": len(ofertas)}
 
 
 @app.post("/aliexpress/forcar-fechar")
