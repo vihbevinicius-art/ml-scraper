@@ -601,6 +601,14 @@ def index():
     .btn-abrir { background: #f0f0f0; color: #333; }
     .btn-abrir:hover { background: #e0e0e0; }
     .radar-resumo { font-size: 13px; color: #444; margin-bottom: 12px; font-weight: 600; }
+    .ali-atalhos { margin-top: 28px; padding-top: 22px; border-top: 2px solid #eee; }
+    .ali-atalhos h3 { font-size: 16px; color: #8a6300; margin-bottom: 6px; }
+    .ali-atalhos-sub { font-size: 13px; color: #666; margin-bottom: 14px; line-height: 1.5; }
+    .ali-marcas-grid { display: flex; flex-wrap: wrap; gap: 8px; }
+    .ali-marcas-grid a { background: #fff4d6; color: #8a6300; border: 1px solid #f0d488;
+                         padding: 8px 15px; border-radius: 999px; font-size: 13.5px;
+                         font-weight: 600; text-decoration: none; transition: all .15s; }
+    .ali-marcas-grid a:hover { background: #ffe9b0; border-color: #e0b850; }
 
     /* ─── Badge de marca no topo do card ─── */
     .marca-badge { display: block; font-weight: 700; padding: 10px 14px;
@@ -809,6 +817,14 @@ def index():
         </label>
       </div>
       <div id="radar-lista"><div class="hist-vazio">Clique em “Buscar ofertas agora” pra começar. 🎯</div></div>
+
+      <div class="ali-atalhos">
+        <h3>🛒 Caçar ofertas no AliExpress</h3>
+        <p class="ali-atalhos-sub">O AliExpress não deixa a gente puxar as ofertas automático,
+        mas dá pra ir direto no que interessa. Clique numa marca — abre a busca no seu navegador,
+        já é só olhar os descontos e trazer o link pro gerador.</p>
+        <div id="ali-marcas" class="ali-marcas-grid"></div>
+      </div>
     </div>
   </div>
 
@@ -1263,7 +1279,25 @@ def index():
     // ─── Radar de Ofertas ───────────────────────────────────────────
     let _radarOfertas = null;
 
+    // Marcas fortes do nicho que valem a pena caçar no AliExpress
+    const ALI_MARCAS = [
+      'Godox', 'DJI', 'Viltrox', 'Ulanzi', 'Neewer', 'Zhiyun',
+      'Hollyland', 'K&F Concept', 'Sirui', 'Sandmarc', 'Moman', 'Sjcam',
+    ];
+
+    function montarAtalhosAli() {
+      const cont = document.getElementById('ali-marcas');
+      if (!cont || cont.dataset.pronto) return;
+      cont.innerHTML = ALI_MARCAS.map(m => {
+        const termo = encodeURIComponent(m.toLowerCase().replace(/\\s+/g, '-'));
+        const url = `https://pt.aliexpress.com/w/wholesale-${termo}.html?SortType=total_tranpro_desc`;
+        return `<a href="${url}" target="_blank" rel="noopener">🔎 ${escapeHtml(m)}</a>`;
+      }).join('');
+      cont.dataset.pronto = '1';
+    }
+
     async function carregarRadar(forcar) {
+      montarAtalhosAli();
       if (_radarOfertas && !forcar) { renderRadar(); return; }
       const btn = document.getElementById('btn-radar');
       const lista = document.getElementById('radar-lista');
@@ -1674,11 +1708,34 @@ def listar_marcas():
 _ORDEM_COR = {"verde": 0, "amarelo": 1, "vermelho": 2}
 
 
+def _relevancia_oferta(o: dict) -> int:
+    """Prioridade da oferta pro nicho (menor = mais relevante):
+    0 = marca aprovada (verde)
+    1 = marca intermediária reconhecida (amarelo com marca)
+    2 = categoria do nicho detectada (ex: [ÁUDIO]) mesmo sem marca conhecida
+    3 = resto (genérico: TV, suplemento que caiu da categoria ampla)
+    4 = vermelho ('não postar') — sempre por último, independente do desconto"""
+    bm = o["badge_marca"]
+    if bm["cor"] == "vermelho":
+        return 4
+    if bm["cor"] == "verde":
+        return 0
+    if bm.get("marca"):  # amarelo COM marca reconhecida
+        return 1
+    if o.get("categoria"):  # nicho detectado pela categoria
+        return 2
+    return 3
+
+
+# Máximo de ofertas retornadas pelo radar
+_RADAR_LIMITE = 40
+
+
 @app.get("/radar")
 def radar_ofertas():
     """Radar de Ofertas: busca produtos em promoção no nicho de foto/áudio,
-    classifica cada um pela marca (guia) e ranqueia: marca aprovada primeiro,
-    depois maior desconto. O preço o operador vê ao abrir o link."""
+    classifica cada um pela marca (guia) e ranqueia: relevância pro nicho
+    primeiro, depois maior desconto. O preço o operador vê ao abrir o link."""
     try:
         ofertas = radar.buscar_ofertas()
     except Exception as e:
@@ -1688,11 +1745,10 @@ def radar_ofertas():
         o["badge_marca"] = classificar_marca(o.get("titulo"))
         o["categoria"] = detectar_categoria(o.get("titulo"))
 
-    # Ranqueia: cor da marca (verde→amarelo→vermelho), depois maior desconto
-    ofertas.sort(key=lambda o: (
-        _ORDEM_COR.get(o["badge_marca"]["cor"], 9),
-        -(o.get("desconto") or 0),
-    ))
+    # Ranqueia por relevância ao nicho, depois maior desconto. Empurra
+    # genéricos (TV, suplemento) pro fim e corta no limite.
+    ofertas.sort(key=lambda o: (_relevancia_oferta(o), -(o.get("desconto") or 0)))
+    ofertas = ofertas[:_RADAR_LIMITE]
     return {"ofertas": ofertas, "total": len(ofertas)}
 
 

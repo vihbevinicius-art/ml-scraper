@@ -1,4 +1,5 @@
 import hashlib
+import os
 import re
 import urllib.parse
 from typing import Optional
@@ -219,33 +220,63 @@ def _titulo_do_slug(url: str) -> Optional[str]:
     return " ".join(palavras)
 
 
+def _limpar_titulo_ext(titulo: Optional[str]) -> Optional[str]:
+    """Normaliza um título vindo de leitor externo: remove sufixos do ML e
+    rejeita títulos genéricos (quando a leitura não pegou o produto)."""
+    if not titulo:
+        return None
+    titulo = re.sub(r"\s*[-|]\s*Mercado\s*Li[bv]re.*$", "", titulo, flags=re.I).strip()
+    titulo = re.sub(r"\s*[-–]\s*R\$.*$", "", titulo).strip()
+    generico = titulo.lower() in {
+        "mercado livre", "mercado libre", "mercado livre brasil",
+        "mercadolivre", "", "por segurança",
+    }
+    return None if generico else titulo
+
+
 def _titulo_via_jina(url: str, timeout: int = 30) -> Optional[str]:
     """Usa o Jina Reader (r.jina.ai) pra ler a página do produto de um IP
-    não bloqueado. Retorna o og:title (linha 'Title:' do markdown). Serve
-    de fallback quando o ML bloqueia o scraping direto (ex: IP de data center).
-    Retorna None se falhar ou vier título genérico ('Mercado Livre')."""
+    não bloqueado. Retorna o og:title (linha 'Title:' do markdown).
+    Sem chave, o Jina bloqueia IPs de data center (Render) — por isso, se
+    a env JINA_API_KEY existir, manda no header (funciona de qualquer IP)."""
+    headers = {"x-timeout": str(timeout - 5), "Accept": "text/plain"}
+    api_key = os.environ.get("JINA_API_KEY", "").strip()
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+    try:
+        r = requests.get("https://r.jina.ai/" + url, headers=headers, timeout=timeout)
+        if r.status_code != 200:
+            return None
+        m = re.search(r"^Title:\s*(.+)$", r.text, re.MULTILINE)
+        return _limpar_titulo_ext(m.group(1).strip()) if m else None
+    except Exception:
+        return None
+
+
+def _titulo_via_microlink(url: str, timeout: int = 25) -> Optional[str]:
+    """Usa o microlink.io pra ler o og:title. É uma API hospedada que funciona
+    de qualquer IP (inclusive data center/Render), diferente do Jina anônimo.
+    Fallback principal quando o Jina falha por bloqueio de IP."""
     try:
         r = requests.get(
-            "https://r.jina.ai/" + url,
-            headers={"x-timeout": str(timeout - 5), "Accept": "text/plain"},
+            "https://api.microlink.io",
+            params={"url": url},
             timeout=timeout,
         )
         if r.status_code != 200:
             return None
-        m = re.search(r"^Title:\s*(.+)$", r.text, re.MULTILINE)
-        if not m:
-            return None
-        titulo = m.group(1).strip()
-        # Remove sufixos comuns
-        titulo = re.sub(r"\s*[-|]\s*Mercado\s*Li[bv]re.*$", "", titulo, flags=re.I).strip()
-        titulo = re.sub(r"\s*[-–]\s*R\$.*$", "", titulo).strip()
-        # Rejeita títulos genéricos (página não era a do produto)
-        generico = titulo.lower() in {
-            "mercado livre", "mercado libre", "mercado livre brasil", "",
-        }
-        return None if generico else titulo
+        data = (r.json() or {}).get("data") or {}
+        return _limpar_titulo_ext((data.get("title") or "").strip())
     except Exception:
         return None
+
+
+def _titulo_externo(url: str) -> Optional[str]:
+    """Tenta recuperar o título por leitores externos, em ordem:
+    1) Jina Reader (rápido, alto limite — funciona de IP residencial/com chave)
+    2) microlink.io (funciona de qualquer IP, inclusive Render)
+    Usado quando o ML bloqueia o scraping direto."""
+    return _titulo_via_jina(url) or _titulo_via_microlink(url)
 
 
 def _buscar_pagina(url: str) -> requests.Response:
@@ -345,32 +376,29 @@ def extrair_produto(url: str) -> dict:
             if t:
                 resultado["titulo"] = t
 
-    # Detecta página de bloqueio anti-bot do ML. Comum quando o app roda em
-    # IP de data center (ex: Render) — o ML serve uma página de verificação
-    # ("Por segurança...") em vez do produto. Sinaliza pra cair no modo manual.
+    # Se não chegou numa página de produto de verdade (sem h1.ui-pdp-title),
+    # é bloqueio anti-bot do ML ("Por segurança" / "Seguridad — Mercado Libre")
+    # ou uma vitrine que não abriu o produto. O ML passou a bloquear até IP
+    # residencial, e a página de bloqueio muda de forma (PT/ES), então em vez
+    # de caçar marcadores de texto, tratamos QUALQUER ausência de produto como
+    # "sem dados diretos" e recuperamos o título por leitor externo.
+    # Sem h1.ui-pdp-title não há como extrair preço (o bloco de preço é
+    # ancorado nele), então tratamos como bloqueio/sem-produto e recuperamos
+    # o título por leitor externo. Cobre qualquer variante da página de
+    # segurança do ML (PT "Por segurança" / ES "Seguridad — Mercado Libre").
     if not soup.select_one("h1.ui-pdp-title"):
-        title_tag = soup.select_one("title")
-        title_low = title_tag.get_text(strip=True).lower() if title_tag else ""
-        titulo_low = (resultado["titulo"] or "").lower()
-        marcadores = (
-            "por segurança", "para sua segurança", "antes de continuar",
-            "verifique que", "não sou um robô", "no soy un robot",
-            "acesso não autorizado", "unusual traffic",
-        )
-        combinado = f"{title_low} {titulo_low}"
-        if any(m in combinado for m in marcadores):
-            resultado["bloqueado"] = True
-            resultado["titulo"] = None
-            # Tenta recuperar o TÍTULO por fora do scraping bloqueado:
-            # 1) Jina Reader (lê de um IP não bloqueado) — passa a URL original
-            #    (afiliado/meli.la) pra ele renderizar a vitrine e pegar o og:title.
-            titulo_ext = _titulo_via_jina(url)
-            # 2) Fallback: slug da URL final resolvida (se for /p/MLB)
-            if not titulo_ext:
-                titulo_ext = _titulo_do_slug(resp.url)
-            if titulo_ext:
-                resultado["titulo"] = titulo_ext
-            return resultado
+        resultado["bloqueado"] = True
+        resultado["titulo"] = None
+        # 1) Leitores externos (Jina → microlink) — leem de um IP não
+        #    bloqueado. Passa a URL original (afiliado/meli.la) pra
+        #    renderizar a vitrine e pegar o og:title do produto.
+        titulo_ext = _titulo_externo(url)
+        # 2) Fallback: slug da URL final resolvida (se for /p/MLB)
+        if not titulo_ext:
+            titulo_ext = _titulo_do_slug(resp.url)
+        if titulo_ext:
+            resultado["titulo"] = titulo_ext
+        return resultado
 
     caracteristicas = []
     for li in soup.select("ul.ui-pdp-features li, ul.ui-vpp-highlighted-specs__features-list li"):

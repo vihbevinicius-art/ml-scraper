@@ -7,15 +7,19 @@ bloqueado — funciona tanto local quanto no Render. Não pega o preço em R$
 que é o sinal do que vale a pena caçar. O preço o operador copia ao abrir.
 """
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 import requests
 
 # Categorias de oferta do ML relevantes pro nicho de foto/vídeo/áudio.
-# MLB1039 = Câmeras e Acessórios (o coração do nicho: câmeras, lentes,
-# microfones, tripés, cartões, estabilizadores).
+# MLB1039 = Câmeras e Acessórios (coração do nicho: câmeras, lentes,
+#           microfones, tripés, cartões, estabilizadores).
+# MLB1000 = Eletrônicos, Áudio e Vídeo (fones, caixas, áudio pro — filtrado
+#           depois pela marca/categoria pra não encher de TV genérica).
 CATEGORIAS_OFERTAS = {
     "MLB1039": "Câmeras e Acessórios",
+    "MLB1000": "Áudio e Vídeo",
 }
 
 _HEADING = re.compile(
@@ -75,18 +79,23 @@ def _parse_ofertas(markdown: str, categoria_nome: str) -> list:
     return ofertas
 
 
+def _buscar_categoria(item) -> list:
+    cat_id, cat_nome = item
+    url = f"https://www.mercadolivre.com.br/ofertas?category={cat_id}"
+    return _parse_ofertas(_ler_ofertas_jina(url), cat_nome)
+
+
 def buscar_ofertas() -> list:
-    """Busca ofertas de todas as categorias configuradas. Retorna lista
-    unificada (sem duplicatas por link)."""
+    """Busca ofertas de todas as categorias configuradas (em paralelo pra não
+    somar o tempo do Jina). Retorna lista unificada (sem duplicatas por link)."""
     todas = []
     vistos = set()
-    for cat_id, cat_nome in CATEGORIAS_OFERTAS.items():
-        url = f"https://www.mercadolivre.com.br/ofertas?category={cat_id}"
-        md = _ler_ofertas_jina(url)
-        for oferta in _parse_ofertas(md, cat_nome):
-            if oferta["url"] not in vistos:
-                vistos.add(oferta["url"])
-                todas.append(oferta)
+    with ThreadPoolExecutor(max_workers=len(CATEGORIAS_OFERTAS)) as ex:
+        for ofertas in ex.map(_buscar_categoria, CATEGORIAS_OFERTAS.items()):
+            for oferta in ofertas:
+                if oferta["url"] not in vistos:
+                    vistos.add(oferta["url"])
+                    todas.append(oferta)
     return todas
 
 
